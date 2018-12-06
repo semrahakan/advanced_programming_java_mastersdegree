@@ -1,0 +1,47 @@
+
+const Enemy_No = 2
+range EnemyID = 0..Enemy_No-1
+
+GATE = UP, 
+UP = ( lower -> DOWN | pass -> UP ), 
+DOWN = ( raise -> UP ).
+
+ENTERING_SENSOR = ( enter -> ENTERING_SENSOR ).
+EXITING_SENSOR = ( exit -> EXITING_SENSOR ).
+
+WARNING_INDICATOR = WARNING [0],
+WARNING[ i:EnemyID]=  ( 
+						  when(i==0)  e.enter ->  on-> WARNING[i+1] // zero means no enemy on the road
+						 |when(i==1)  e.enter ->   WARNING[i]  // more than one car can enter, do not turn on again
+						 |when(i==1) exit ->  off-> WARNING[i-1] // if number of enemies are greather than zero, when they exit, decrease the numbers just once.
+						 |when(i==0)  exit ->   WARNING[i]
+						
+						). 
+
+property NO_CRASH = ENEMYCAR[0], 
+ENEMYCAR[i:0..Enemy_No] =  (  martin.m.enter ->martin.exit -> ENEMYCAR[0]  // martin can enter and exit the road
+
+				  			 |when (i<Enemy_No )  enemy[EnemyID].e.enter->indicator.on ->  ENEMYCAR[i+1] 
+			
+				  			|when (i > 0) enemy[EnemyID].exit -> indicator.off -> ENEMYCAR[i-1]) .
+			
+				
+ENEMY = (e.enter-> exit -> ENEMY ).
+
+MARTIN=(  leavehome-> m.enter -> exit ->  MARTIN).
+
+|| UNSAFE_MARTIN =( indicator: WARNING_INDICATOR || martin:MARTIN  || enteringS:ENTERING_SENSOR     ||   NO_CRASH  ||
+{martin,enemy[EnemyID]}::exitingS:EXITING_SENSOR 	// exiting sensor is a shared process.
+|| enemy[EnemyID]:ENEMY   || gate:GATE  )
+/{
+	martin.m.enter / enteringS.enter,
+	enemy[EnemyID].e.enter/ indicator.e.enter,
+	enemy[EnemyID].e.enter/enteringS.enter,
+	enemy[EnemyID].exit/exitingS.exit,
+	enemy[EnemyID].exit / indicator.exit ,
+	enemy[EnemyID].e.enter/gate.pass, // assuming to enter the road, gate should be open. there is no control on the gate.
+	martin.exit/ martin.exitingS.exit,
+	martin.leavehome/ martin.exitingS.exit
+}.
+
+

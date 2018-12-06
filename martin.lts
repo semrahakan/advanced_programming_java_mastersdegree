@@ -1,0 +1,88 @@
+/*Concurrency Coursework Part B (Safe Model): 
+* by S. Hakan and H. Keskin
+* based on martin-abvn955.tls
+*
+* Instructor: C. Kloukinas
+*
+*/  
+
+//Number of cars (enemies) that are allowed on the road.
+const MaxAllwdCarsOnRoad=2 
+//The array of the cars (enemies)
+range CarID=0..MaxAllwdCarsOnRoad-1 
+
+//Gate process from the coursework specifications
+GATE=UP,
+UP=(lower -> DOWN
+	| pass -> UP),
+DOWN=(raise -> UP).
+
+//Sensor processes from the coursework specifications.
+ENTERING_SENSOR =	(enter -> ENTERING_SENSOR).
+EXITING_SENSOR =	(exit -> EXITING_SENSOR).
+
+//counts cars. 
+CAR_COUNTER=COUNT[0],
+COUNT[i:0..MaxAllwdCarsOnRoad]=(when(i<MaxAllwdCarsOnRoad)
+									increase -> COUNT[i+1]
+			   				   |when(i>0)
+									decrease -> COUNT[i-1]
+			   				   |count[i]->COUNT[i]).  
+
+//on when counter >0 off when counter=0.
+WARNING_INDICATOR=(indicatorOn -> WARNING_INDICATOR 
+				  |indicatorOff -> WARNING_INDICATOR).
+//Car (enemy) process 
+CAR=(gate.pass -> enterRoad -> exitRoad -> CAR).
+
+//Mole (Martin) process
+MOLE = (exitHouse -> indicatorOff -> enterRoad -> exitRoad -> MOLE). 
+
+//Controller process which ensures that Martin and the car(s) cannot be on the road at the same time. 
+CONTROLLER = CONTROLLER[0],
+CONTROLLER[i:0..MaxAllwdCarsOnRoad]= (when(i<MaxAllwdCarsOnRoad) 
+					car[CarID].gate.pass -> CONTROLLER[i+1]
+			   |when(i>0) 
+					car[CarID].exitRoad->CONTROLLER[i-1]
+			   |when(i==0)
+					gate.lower -> martin.enterRoad -> martin.exitRoad -> gate.raise -> CONTROLLER[0]).
+
+//Safety property to test whether Martin's journey on the road can be interrupted once he is on the road. 
+//(Apperantly the answer is YES if there wasn't a controller introduced to the system)  
+property NO_CRASH = NO_CRASH[0],
+NO_CRASH[i:0..MaxAllwdCarsOnRoad]= (when(i<MaxAllwdCarsOnRoad)
+					car[CarID].enterRoad -> NO_CRASH[i+1]
+			   |when(i>0)
+					car[CarID].exitRoad -> NO_CRASH[i-1]
+			   |when(i==0)
+					martin.enterRoad -> martin.exitRoad -> NO_CRASH[0]).
+				
+//Progress property to test if Martin can progress (exit the road) 
+progress LIVE_MARTIN= {martin.enterRoad}
+
+
+//the composition
+||SAFE_MARTIN=(martin:MOLE
+	||mExitHouse:EXITING_SENSOR
+	||mEnterRoad:ENTERING_SENSOR
+	||car[CarID]:CAR 
+	||gate:GATE 
+	||WARNING_INDICATOR
+	||CAR_COUNTER
+	||car[CarID]::cEnterRoad:ENTERING_SENSOR
+	||car[CarID]::anyExitRoad:EXITING_SENSOR
+	||CONTROLLER
+	||NO_CRASH)
+	/{martin.exitHouse/mExitHouse.exit,
+	  martin.enterRoad/mEnterRoad.enter,
+	  martin.exitRoad/martin.anyExitRoad.exit,
+	  indicatorOff/{count[0],martin.indicatorOff},
+	  indicatorOn/count[1..MaxAllwdCarsOnRoad],
+	  car[CarID].gate.pass/gate.pass,
+	  car[CarID].enterRoad/{car[CarID].cEnterRoad.enter,increase},
+	  car[CarID].exitRoad/{car[CarID].anyExitRoad.exit,decrease}}.
+
+//Cars has priority to enter the road.
+||SAFE_CONGESTED = SAFE_MARTIN << {car[CarID].gate.pass,car[CarID].enterRoad }.
+
+
